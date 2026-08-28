@@ -1,0 +1,48 @@
+# Local infrastructure for step 1: broker, database, queue backend.
+# Application processes (simulator, ingest, worker) run on the host for now.
+# They get their own images in step 3, together with the multi-stage Dockerfile.
+#
+# Left out on purpose - these are yours, later in the plan:
+#   - healthchecks + depends_on: condition: service_healthy  (step 6)
+#   - mosquitto per-device credentials and ACL                (step 3)
+#   - docker-compose.override.yml (dev hot reload vs prod)    (step 6)
+
+services:
+  mosquitto:
+    image: eclipse-mosquitto:2
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - mosquitto-data:/mosquitto/data
+    restart: unless-stopped
+
+  postgres:
+    # TimescaleDB is a Postgres extension, so this is still Postgres.
+    # Using the image from day one means step 2 is a table migration,
+    # not a database re-provisioning.
+    image: timescale/timescaledb:latest-pg17
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    # Persistence left at the default (RDB). RDB vs AOF is your decision -
+    # it is one of the interview questions in section 11.
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+volumes:
+  mosquitto-data:
+  postgres-data:
+  redis-data:

@@ -1,0 +1,9 @@
+# Keep the build context small and the layer cache stable.
+node_modules
+dist
+.git
+.env
+*.log
+docs
+README.md
+CLAUDE.md
