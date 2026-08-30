@@ -12,6 +12,8 @@
 
     "strict": true,
     "noUncheckedIndexedAccess": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
     "skipLibCheck": true
   },
   "include": ["src"]
