@@ -4,3 +4,6 @@ dist/
 *.log
 knowledge.md
 .vscode/
+
+# scratch/probe files
+_*
