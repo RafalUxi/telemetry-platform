@@ -34,6 +34,8 @@ export interface SimulatorConfig {
     duplicate: number;
     // The payload goes out corrupted and cannot be parsed.
     corruptPayload: number;
+    // The device restarts: it loses RAM, it keeps non-volatile memory.
+    reboot: number;
   };
 }
 
@@ -49,6 +51,7 @@ export const defaultConfig: SimulatorConfig = {
     disconnect: 0.001,
     duplicate: 0.02,
     corruptPayload: 0.005,
+    reboot: 0.0002,
   },
 };
 
@@ -142,19 +145,50 @@ export function publishBatch(device: Device, samples: Sample[], config: Simulato
 // The decision taken is to drop the newest measurements.
 // Old measurements are frozen in the buffer.
 // A device outage lasts constReconnectPeriod, and the state is detected through .connected => boolean
+// A network outage has a higher probability than a device restart (reboot), which is why it is checked second.
+// When data is buffered (when there is more than 1 because of faults) the device forms batches of data.
+// The data in a batch is shuffled before sending.
 
 export function tick(device: Device, config: SimulatorConfig): void {
   device.buffer.push(nextSample(device));
   device.buffer = device.buffer.slice(0, config.bufferMaxSize); // Dropping new measurements
 
   if (device.client === null || !device.client.connected) return;
+
+  if (Math.random() <= config.faults.reboot) {
+    rebootDevice(device, config);
+    return;
+  }
   if (Math.random() <= config.faults.disconnect) {
     device.client.stream.destroy();
     return;
   }
 
-  publishBatch(device, device.buffer.slice(0, config.batchMaxSize), config);
+  const randomBuffer = device.buffer
+    .slice(0, config.batchMaxSize)
+    .map((buff) => ({
+      buff,
+      sort: Math.random(),
+    }))
+    .sort((a, b) => a.sort - b.sort)
+    .map(({ buff }) => buff);
+
+  publishBatch(device, randomBuffer, config);
   device.buffer = device.buffer.slice(config.batchMaxSize);
+}
+
+// Restarts the device: what survives a real board's restart stays, the rest is lost.
+
+export function rebootDevice(device: Device, config: SimulatorConfig): void {
+  device.bootId += 1;
+  device.seq = -1;
+  device.buffer = [];
+  device.clockOffsetMs =
+    Math.random() > 0.5
+      ? Math.floor(Math.random() * config.clockDriftMaxMs)
+      : Math.floor(Math.random() * -1 * config.clockDriftMaxMs);
+  if (device.client === null) return;
+  device.client.stream.destroy();
 }
 
 // Connects one device to the broker and starts its measurement loop.
@@ -198,12 +232,18 @@ export function startFleet(config: SimulatorConfig): Device[] {
 }
 
 // Function returning a promise of closing the device client
+//
+// ponytail: shutdown failures are undetectable here. client.end(resolve) passes
+// resolve as a Node-style callback, so an error reported by end() lands in the
+// fulfilled value instead of rejecting, and a callback that never fires makes
+// Promise.allSettled wait forever - which silently kills Ctrl+C. Add a timeout
+// per client and a tagged failure result carrying deviceId if a real broker
+// ever starts refusing DISCONNECT.
 
 function closeDevice(device: Device) {
   const client = device.client;
   if (client === null) {
-    console.log(`Device id: ${device.deviceId} - closeDevice error`);
-    return;
+    return 'notOpen';
   }
   return new Promise((resolve) => {
     client.end(resolve);
@@ -216,19 +256,34 @@ function closeDevice(device: Device) {
 
 export async function stopFleet(devices: Device[]): Promise<void> {
   clearInterval(startFleetTimer);
+  let stopTimeError = 0;
 
   for (const dev of devices) {
     if (dev.timer === null) {
-      console.log(`Device id: ${dev.deviceId} - stop timer error`);
+      stopTimeError += 1;
       continue;
     }
     clearInterval(dev.timer);
     dev.timer = null;
   }
 
+  if (stopTimeError > 0) {
+    console.log(`Number of devices that did not start (during start process) - ${stopTimeError}`);
+  }
+
   const promise = await Promise.allSettled(devices.map((p) => closeDevice(p)));
+
+  const notOpen = promise.filter((d) => d.status === 'fulfilled' && d.value === 'notOpen');
+  const upClosed = promise.filter((d) => d.status === 'fulfilled' && d.value === undefined);
+
+  console.log(`Number of devices not opened: ${notOpen.length}/${promise.length}`);
+  console.log(`Number of devices shut down: ${upClosed.length}/${promise.length}`);
+
   const down = promise.filter((w) => w.status === 'rejected');
+
   if (down.length > 0) {
-    console.log(`${down.length} not closed: ${down.map((w) => w.reason.message).join(', ')}`);
+    console.log(
+      `Number of processes that run down: ${down.length}/${promise.length}; reason: ${down.map((w) => w.reason.message).join(` ,`)}`,
+    );
   }
 }
