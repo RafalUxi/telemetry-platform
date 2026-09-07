@@ -12,15 +12,19 @@ Date: YYYY-MM-DD
 Status: accepted
 
 ## Context
+
 What forced a decision here.
 
 ## Decision
+
 What was chosen.
 
 ## Rejected alternatives
+
 What else was on the table and why it lost.
 
 ## Consequences
+
 What this makes easy, what it makes expensive, what it locks in.
 ```
 
