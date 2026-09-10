@@ -19,3 +19,10 @@ FROM timescaledb_information.chunks
 WHERE hypertable_name = 'measurements'
 ORDER BY range_start \gexec
 
+--- Refresh policy for the view
+SELECT add_continuous_aggregate_policy(
+    'measurements_hourly',
+    start_offset      => INTERVAL '1 day',
+    end_offset        => INTERVAL '1 hour',
+    schedule_interval => INTERVAL '30 minutes',
+    if_not_exists     => true);
