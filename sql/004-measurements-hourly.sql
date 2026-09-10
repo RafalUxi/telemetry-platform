@@ -9,3 +9,13 @@ count(*) AS n, sum(temperature) AS temp_sum, sum(temperature*temperature) AS tem
 sum(humidity) AS humidity_sum, sum(humidity*humidity) AS humidity_sum_sq, min(humidity) AS humidity_min, max(humidity) AS humidity_max
 FROM measurements GROUP BY device_id, bucket
 WITH NO DATA;
+
+-- Backfill in windows, oldest to newest, each window as a separate statement.
+-- \timing on - psql prints how long each statement took: progress per window.
+-- \gexec     - psql runs every row of the query result as its own statement, each in its own transaction (a refresh refuses a transaction block).
+\timing on
+SELECT format('CALL refresh_continuous_aggregate(''measurements_hourly'', %L, %L)', range_start, range_end)
+FROM timescaledb_information.chunks
+WHERE hypertable_name = 'measurements'
+ORDER BY range_start \gexec
+
