@@ -22,3 +22,6 @@ SELECT add_continuous_aggregate_policy(
     end_offset        => INTERVAL '1 day',
     schedule_interval => INTERVAL '1 hour',
     if_not_exists     => true);
+
+ALTER MATERIALIZED VIEW IF EXISTS measurements_daily
+SET (timescaledb.materialized_only = false);
