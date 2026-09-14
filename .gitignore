@@ -3,8 +3,10 @@ dist/
 .env
 *.log
 knowledge.md
+learning.md
 .vscode/
 
 # scratch/probe files
 _*
+!_journal.json
 *.tsbuildinfo
