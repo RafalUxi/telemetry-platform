@@ -1,12 +1,16 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   HttpCode,
   BadRequestException,
+  UseGuards,
+  Req,
 } from '@nestjs/common';
 import { z } from 'zod';
 import { AuthService } from './auth.service.js';
+import { AuthGuard } from './auth.guard.js';
 
 const authZodSchema = z.object({
   email: z.email(),
@@ -42,5 +46,21 @@ export class AuthController {
       throw new BadRequestException(parse.error.issues);
     }
     return this.auth.refresh(parse.data.refreshToken);
+  }
+
+  @Post('logout')
+  @HttpCode(204)
+  logout(@Body() body: unknown) {
+    const parse = authZodSchemaRefresh.safeParse(body);
+    if (!parse.success) {
+      throw new BadRequestException(parse.error.issues);
+    }
+    return this.auth.logout(parse.data.refreshToken);
+  }
+
+  @Get('me')
+  @UseGuards(AuthGuard)
+  me(@Req() request: { user: { sub: string } }) {
+    return { id: request.user.sub };
   }
 }

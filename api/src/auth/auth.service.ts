@@ -6,7 +6,6 @@ import * as schema from '../db/schema.js';
 import { randomBytes, createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import * as argon2 from 'argon2';
-import { get } from 'node:http';
 
 @Injectable()
 export class AuthService {
@@ -69,5 +68,13 @@ export class AuthService {
     }
 
     return this.issueTokens(id.user_id);
+  }
+
+  public async logout(refreshToken: string) {
+    const hash = createHash('sha256').update(refreshToken).digest('hex');
+
+    await this.db
+      .delete(schema.usersSession)
+      .where(eq(schema.usersSession.tokenHash, hash));
   }
 }
