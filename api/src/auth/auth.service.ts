@@ -6,6 +6,7 @@ import * as schema from '../db/schema.js';
 import { randomBytes, createHash } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import * as argon2 from 'argon2';
+import { get } from 'node:http';
 
 @Injectable()
 export class AuthService {
@@ -26,7 +27,6 @@ export class AuthService {
   }
 
   public async login(email: string, password: string) {
-    // Pobranie z bazy danych do walidacji
     const [data] = await this.db
       .select({
         id: schema.users.id,
@@ -51,5 +51,23 @@ export class AuthService {
     } else {
       return this.issueTokens(data.id);
     }
+  }
+
+  public async refresh(refreshToken: string) {
+    const hash = createHash('sha256').update(refreshToken).digest('hex');
+
+    const [id] = await this.db
+      .delete(schema.usersSession)
+      .where(eq(schema.usersSession.tokenHash, hash))
+      .returning({
+        user_id: schema.usersSession.user_id,
+        expires: schema.usersSession.expiresAt,
+      });
+
+    if (id === undefined || id.expires.getTime() <= Date.now()) {
+      throw new UnauthorizedException();
+    }
+
+    return this.issueTokens(id.user_id);
   }
 }

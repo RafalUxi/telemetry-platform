@@ -13,6 +13,13 @@ const authZodSchema = z.object({
   password: z.string().min(8).max(128),
 });
 
+const authZodSchemaRefresh = z.object({
+  refreshToken: z
+    .string()
+    .length(43)
+    .regex(/^[A-Za-z0-9_-]+$/),
+});
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -25,5 +32,15 @@ export class AuthController {
       throw new BadRequestException(parse.error.issues);
     }
     return this.auth.login(parse.data.email, parse.data.password);
+  }
+
+  @Post('refresh')
+  @HttpCode(200)
+  refresh(@Body() body: unknown) {
+    const parse = authZodSchemaRefresh.safeParse(body);
+    if (!parse.success) {
+      throw new BadRequestException(parse.error.issues);
+    }
+    return this.auth.refresh(parse.data.refreshToken);
   }
 }
