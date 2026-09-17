@@ -25,3 +25,15 @@ export const usersSession = pgTable('users_sessions', {
     .notNull()
     .defaultNow(),
 });
+
+export const devices = pgTable('devices', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  user_id: uuid('user_id')
+    .notNull()
+    .references(() => users.id, { onDelete: `no action` }),
+  device_id: text().notNull().unique(),
+  name: text().notNull(),
+  createAt: timestamp('created_at', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});

@@ -15,6 +15,13 @@
       "when": 1789385253156,
       "tag": "0001_left_venom",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789641366947,
+      "tag": "0002_clumsy_shocker",
+      "breakpoints": true
     }
   ]
 }
