@@ -23,5 +23,6 @@ import { DbModule } from '../db/db.module.js';
   ],
   providers: [AuthService],
   controllers: [AuthController],
+  exports: [JwtModule],
 })
 export class AuthModule {}
