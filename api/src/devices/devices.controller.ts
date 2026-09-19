@@ -7,17 +7,36 @@ import {
   Post,
   HttpCode,
   Req,
+  Delete,
+  Param,
 } from '@nestjs/common';
 import { DevicesService } from './devices.service.js';
-import { z } from 'zod';
+import { uuid, z } from 'zod';
 
 const devZodSchema = z.object({
   name: z.string(),
 });
 
+const deleteZodSchema = z.uuid();
+
 @Controller('devices')
 export class DevicesController {
   constructor(private readonly dev: DevicesService) {}
+
+  @Delete(':id')
+  @HttpCode(204)
+  @UseGuards(AuthGuard)
+  async deleteOneDevice(
+    @Param('id') id: string,
+    @Req() request: { user: { sub: string } },
+  ) {
+    const parse = deleteZodSchema.safeParse(id);
+    if (!parse.success) {
+      throw new BadRequestException(parse.error.issues);
+    }
+    const output = await this.dev.deleteOneDevice(parse.data, request.user.sub);
+    return output;
+  }
 
   @Post()
   @HttpCode(201)

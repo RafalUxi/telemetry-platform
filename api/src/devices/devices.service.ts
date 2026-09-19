@@ -1,15 +1,20 @@
-import { Injectable, Inject, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  Inject,
+  ConflictException,
+  HttpException,
+} from '@nestjs/common';
 import { NodePgDatabase } from 'drizzle-orm/node-postgres';
 import * as schema from '../db/schema.js';
 import { DB } from '../db/db.module.js';
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 
 @Injectable()
 export class DevicesService {
   constructor(@Inject(DB) private readonly db: NodePgDatabase<typeof schema>) {}
 
-  public async deviceRead(user_id: string): Promise<{}> {
+  public async deviceRead(user_id: string) {
     const data = await this.db
       .select({
         device_id: schema.devices.device_id,
@@ -45,6 +50,19 @@ export class DevicesService {
         );
       }
       throw err;
+    }
+  }
+
+  public async deleteOneDevice(id: string, user_id: string) {
+    const data = await this.db
+      .delete(schema.devices)
+      .where(
+        and(eq(schema.devices.id, id), eq(schema.devices.user_id, user_id)),
+      )
+      .returning();
+
+    if (data.length === 0) {
+      throw new HttpException('Delete devices goes wrong', 404);
     }
   }
 }
