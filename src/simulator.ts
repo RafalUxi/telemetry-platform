@@ -198,6 +198,8 @@ export function startDevice(device: Device, config: SimulatorConfig): void {
     clientId: device.deviceId,
     will: { topic: 'error/' + 'devices/' + device.deviceId, payload: 'offline', qos: 1 },
     reconnectPeriod: config.constReconnectPeriod,
+    username: process.env.MQTT_SIM_USERNAME,
+    password: process.env.MQTT_SIM_PASSWORD,
   });
 
   device.timer = setInterval(() => {

@@ -121,7 +121,11 @@ export function startIngest(queue: Queue<IngestJob>, config: IngestConfig): Inge
     rejected: { decode: 0, identity: 0, schema: 0 },
   };
 
-  const client = mqtt.connect(config.brokerUrl, { clientId: `ingest` });
+  const client = mqtt.connect(config.brokerUrl, {
+    clientId: `ingest`,
+    username: process.env.MQTT_INGEST_USERNAME,
+    password: process.env.MQTT_INGEST_PASSWORD,
+  });
 
   client.on(`error`, (err) => console.error('Connection ingest error', err.message));
 
