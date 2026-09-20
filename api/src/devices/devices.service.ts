@@ -133,10 +133,52 @@ export class DevicesService implements OnModuleInit {
       .where(
         and(eq(schema.devices.id, id), eq(schema.devices.user_id, user_id)),
       )
-      .returning();
+      .returning({ device_id: schema.devices.device_id });
 
     if (data.length === 0) {
       throw new HttpException('Delete devices goes wrong', 404);
+    }
+
+    const res = new Promise<{
+      responses: { command: string; error?: string }[];
+    }>((resolve) => {
+      this.client.once('message', (topic, payload) =>
+        resolve(JSON.parse(payload.toString())),
+      );
+    });
+
+    const device_id = data[0].device_id;
+
+    const commands = [
+      {
+        command: 'deleteClient',
+        username: device_id,
+      },
+      {
+        command: 'deleteRole',
+        rolename: 'device-' + device_id,
+      },
+    ];
+
+    await this.client.publishAsync(
+      '$CONTROL/dynamic-security/v1',
+      JSON.stringify({ commands }),
+      {
+        qos: 1,
+      },
+    );
+
+    const creatAcc = await res;
+    const error: string[] = [];
+
+    for (let i = 0; i < creatAcc.responses.length; i++) {
+      const err = creatAcc.responses[i].error;
+      if (err !== undefined) {
+        error.push(err);
+      }
+    }
+    if (error.length > 0) {
+      throw new HttpException(error, 502);
     }
   }
 }

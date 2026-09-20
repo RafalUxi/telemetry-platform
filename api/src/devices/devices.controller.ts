@@ -11,7 +11,7 @@ import {
   Param,
 } from '@nestjs/common';
 import { DevicesService } from './devices.service.js';
-import { uuid, z } from 'zod';
+import { z } from 'zod';
 
 const devZodSchema = z.object({
   name: z.string(),
