@@ -10,3 +10,4 @@ learning.md
 _*
 !_journal.json
 *.tsbuildinfo
+cloudflared/
