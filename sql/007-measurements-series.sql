@@ -9,10 +9,10 @@ DECLARE
      v_hours  numeric := extract(epoch FROM d_to - d_from) / 3600; 
      v_mes bigint;
 BEGIN
-    SELECT sum(h.n) INTO v_mes
-    FROM measurements_hourly h
-    WHERE h.device_id = d_dev_id AND h.bucket >= d_from AND h.bucket < d_to;
-    IF v_mes IS NULL THEN
+    SELECT count(*) INTO v_mes
+    FROM measurements h
+    WHERE h.device_id = d_dev_id AND h.device_ts >= d_from AND h.device_ts < d_to;
+    IF v_mes = 0 THEN
     RETURN;
 ELSIF v_hours > d_points THEN
     RETURN QUERY

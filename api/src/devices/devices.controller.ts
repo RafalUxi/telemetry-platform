@@ -9,6 +9,7 @@ import {
   Req,
   Delete,
   Param,
+  Query,
 } from '@nestjs/common';
 import { DevicesService } from './devices.service.js';
 import { z } from 'zod';
@@ -18,6 +19,12 @@ const devZodSchema = z.object({
 });
 
 const deleteZodSchema = z.uuid();
+
+const seriesSchema = z.object({
+  from: z.coerce.date(),
+  to: z.coerce.date(),
+  points: z.coerce.number().int().min(1).max(5000),
+});
 
 @Controller('devices')
 export class DevicesController {
@@ -62,5 +69,33 @@ export class DevicesController {
   async me(@Req() request: { user: { sub: string } }) {
     const dev = await this.dev.deviceRead(request.user.sub);
     return dev;
+  }
+
+  @Get(':id/series')
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  async seriesForDevice(
+    @Param('id') id: string,
+    @Query() query: unknown,
+    @Req() request: { user: { sub: string } },
+  ) {
+    const parseid = deleteZodSchema.safeParse(id);
+    if (!parseid.success) {
+      throw new BadRequestException(parseid.error.issues);
+    }
+
+    const parse = seriesSchema.safeParse(query);
+    if (!parse.success) {
+      throw new BadRequestException(parse.error.issues);
+    }
+
+    const output = await this.dev.seriesForDevice(
+      parseid.data,
+      request.user.sub,
+      parse.data.from,
+      parse.data.to,
+      parse.data.points,
+    );
+    return output;
   }
 }

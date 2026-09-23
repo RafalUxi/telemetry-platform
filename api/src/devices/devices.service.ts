@@ -6,6 +6,7 @@ import { and, eq } from 'drizzle-orm';
 import { randomBytes } from 'node:crypto';
 import mqtt, { type MqttClient } from 'mqtt';
 import { Injectable, Inject, OnModuleInit, Logger } from '@nestjs/common';
+import { sql } from 'drizzle-orm';
 
 @Injectable()
 export class DevicesService implements OnModuleInit {
@@ -180,5 +181,46 @@ export class DevicesService implements OnModuleInit {
     if (error.length > 0) {
       throw new HttpException(error, 502);
     }
+  }
+
+  public async seriesForDevice(
+    id: string,
+    user_id: string,
+    from: Date,
+    to: Date,
+    points: number,
+  ) {
+    const data = await this.db
+      .select({
+        device_id: schema.devices.device_id,
+      })
+      .from(schema.devices)
+      .where(
+        and(eq(schema.devices.id, id), eq(schema.devices.user_id, user_id)),
+      );
+
+    if (data.length === 0) {
+      throw new HttpException('Series for devices goes wrong', 404);
+    }
+
+    const device_id = data[0].device_id;
+
+    const result = await this.db.execute(
+      sql`select * from measurements_series(${device_id}, ${from}, ${to}, ${points})`,
+    );
+
+    const output = result.rows.map((r) => {
+      return {
+        t: r.t_s,
+        tempAvg: r.temp_avg_s,
+        tempMin: r.temp_min_s,
+        tempMax: r.temp_max_s,
+        humAvg: r.humidity_avg_s,
+        humMin: r.humidity_min_s,
+        humMax: r.humidity_max_s,
+      };
+    });
+
+    return output;
   }
 }
