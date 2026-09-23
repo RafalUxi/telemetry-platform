@@ -57,6 +57,47 @@ services:
     init: true
     restart: unless-stopped
 
+  ingest:
+    build: .
+    image: telemetry-procesy:0.1
+    command: node dist/run-ingest.js
+    env_file: .env
+    environment:
+      MQTT_URL: mqtt://mosquitto:1883
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - mosquitto
+      - redis
+    init: true
+    restart: unless-stopped
+
+  worker:
+    build: .
+    image: telemetry-procesy:0.1
+    command: node dist/run-worker.js
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    init: true
+    restart: unless-stopped
+
+  simulator:
+    build: .
+    image: telemetry-procesy:0.1
+    command: node dist/run-simulator.js
+    profiles: ['demo']
+    env_file: .env
+    environment:
+      MQTT_URL: mqtt://mosquitto:1883
+    depends_on:
+      - mosquitto
+    init: true
+    restart: unless-stopped
+
   cloudflared:
     image: cloudflare/cloudflared:latest
     user: '1000:1000'
