@@ -4,6 +4,7 @@ dist/
 *.log
 knowledge.md
 learning.md
+ksiazka.md
 .vscode/
 
 # scratch/probe files
