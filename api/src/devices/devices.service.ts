@@ -7,6 +7,8 @@ import { randomBytes } from 'node:crypto';
 import mqtt, { type MqttClient } from 'mqtt';
 import { Injectable, Inject, OnModuleInit, Logger } from '@nestjs/common';
 import { sql } from 'drizzle-orm';
+import type { MessageEvent } from '@nestjs/common';
+import { Observable } from 'rxjs';
 
 @Injectable()
 export class DevicesService implements OnModuleInit {
@@ -26,6 +28,7 @@ export class DevicesService implements OnModuleInit {
     );
 
     await this.client.subscribeAsync('$CONTROL/dynamic-security/v1/response');
+    await this.client.subscribeAsync('devices/+/telemetry');
 
     this.client.on('error', (err) => {
       this.logger.error(err);
@@ -222,5 +225,44 @@ export class DevicesService implements OnModuleInit {
     });
 
     return output;
+  }
+
+  public async liveForDevice(id: string, user_id: string) {
+    const data = await this.db
+      .select({
+        device_id: schema.devices.device_id,
+      })
+      .from(schema.devices)
+      .where(
+        and(eq(schema.devices.id, id), eq(schema.devices.user_id, user_id)),
+      );
+
+    if (data.length === 0) {
+      throw new HttpException('Series for devices goes wrong', 404);
+    }
+
+    return new Observable<MessageEvent>((subscriber) => {
+      const handler = (topic: string, payload: Buffer) => {
+        const parts = topic.split('/');
+        if (parts.length > 3) return;
+        if (parts[0] !== 'devices') return;
+        if (parts[2] !== 'telemetry') return;
+
+        const deviceId = parts[1];
+        if (
+          deviceId === undefined ||
+          deviceId.length === 0 ||
+          deviceId !== data[0].device_id
+        ) {
+          return;
+        }
+        return subscriber.next({ data: payload.toString() });
+      };
+      this.client.on('message', handler);
+
+      return () => {
+        this.client.off('message', handler);
+      };
+    });
   }
 }

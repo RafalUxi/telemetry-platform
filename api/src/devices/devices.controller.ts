@@ -10,6 +10,7 @@ import {
   Delete,
   Param,
   Query,
+  Sse,
 } from '@nestjs/common';
 import { DevicesService } from './devices.service.js';
 import { z } from 'zod';
@@ -96,6 +97,20 @@ export class DevicesController {
       parse.data.to,
       parse.data.points,
     );
+    return output;
+  }
+
+  @Sse(':id/live')
+  @UseGuards(AuthGuard)
+  async liveForDevice(
+    @Param('id') id: string,
+    @Req() request: { user: { sub: string } },
+  ) {
+    const parseid = deleteZodSchema.safeParse(id);
+    if (!parseid.success) {
+      throw new BadRequestException(parseid.error.issues);
+    }
+    const output = await this.dev.liveForDevice(parseid.data, request.user.sub);
     return output;
   }
 }
