@@ -46,7 +46,10 @@ services:
     build: ./api
     image: telemetry-api:0.1
     ports:
+      # 3000 dla komend z WSL, 4300 dla przegladarki na Windowsie - zakres
+      # 2991-3690 jest zarezerwowany przez Hyper-V, wiec relay WSL go nie wystawia
       - '3000:3000'
+      - '4300:3000'
     env_file: .env
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
