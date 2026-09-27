@@ -1,9 +1,9 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { SiYoutube } from 'react-icons/si';
 import { FiGithub, FiLinkedin } from 'react-icons/fi';
-import { fetchLogin, fetchRegister } from '@/lib/api';
+import { fetchDevices, fetchLogin, fetchRegister, fetchSeries } from '@/lib/api';
 
 const RANGE = [
   { time: '15 min', sec: 900 },
@@ -14,12 +14,18 @@ const RANGE = [
 
 export default function Home() {
   const [log, setLog] = useState<boolean>(true);
-  const [token, setToken] = useState<string>();
+  const [logged, setLogged] = useState<boolean>(false);
   const [log_email, setLog_email] = useState<string>('');
   const [log_pass, setLog_pass] = useState<string>('');
   const [reg_email, setReg_email] = useState<string>('');
   const [reg_pass, setReg_pass] = useState<string>('');
   const [alert, setAlert] = useState<string | null>(null);
+  const [selectDevice, setSelectDevice] = useState<{
+    id: string;
+    devices: string;
+    name: string;
+  } | null>(null);
+  const [devices, setDevices] = useState<{ id: string; devices: string; name: string }[]>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const showAlert = (text: string) => {
@@ -28,9 +34,43 @@ export default function Home() {
     timer.current = setTimeout(() => setAlert(null), 5000);
   };
 
-  const plot = (time: number) => {
-    console.log(time);
+  const plot = async (sec: number) => {
+    if (selectDevice === null) {
+      showAlert('Select device');
+      return;
+    }
+    const from = new Date(Date.now() - sec * 1000).toISOString();
+    const to = new Date().toISOString();
+    const points = 800;
+
+    const series = await fetchSeries(selectDevice.id, from, to, points);
+
+    if (series.ok) {
+    } else if (series.status === 401) {
+      setLogged(false);
+      showAlert('Your session has expired - please log in again');
+    } else {
+      showAlert('Something went wrong with create plot');
+    }
   };
+
+  const readDevices = async () => {
+    const devices = await fetchDevices();
+    if (devices.ok) {
+      setDevices(devices.body);
+    } else if (devices.status === 401) {
+      setLogged(false);
+      showAlert('Your session has expired - please log in again');
+    } else {
+      showAlert('Something went wrong with read list of devices');
+    }
+  };
+
+  useEffect(() => {
+    if (logged) {
+      readDevices();
+    }
+  }, [logged]);
 
   const login = async (email: string, password: string) => {
     let textAlert: string;
@@ -42,11 +82,12 @@ export default function Home() {
     const userLogin = await fetchLogin(data);
 
     if (userLogin.status === 200) {
-      setToken(userLogin.body.accessToken);
-    }
-
-    if (userLogin.status === 401) {
+      setLogged(true);
+    } else if (userLogin.status === 401) {
       textAlert = 'wrong email or password';
+      showAlert(textAlert);
+    } else {
+      textAlert = `Login failed ${userLogin.status}`;
       showAlert(textAlert);
     }
   };
@@ -75,7 +116,7 @@ export default function Home() {
     showAlert(textAlert);
   };
 
-  if (!token) {
+  if (!logged) {
     if (log) {
       return (
         <div className="relative w-full flex justify-center items-center h-screen bg-black z-0">
@@ -223,7 +264,7 @@ export default function Home() {
     }
   }
 
-  if (token) {
+  if (logged) {
     return (
       <div className="relative w-full h-screen bg-black z-0">
         <div className="w-full flex justify-start items-center h-16 z-10 border-b bg-zinc-950 rounded-b-md border-zinc-600 ">
@@ -247,6 +288,7 @@ export default function Home() {
                 return (
                   <div
                     key={i}
+                    onClick={() => plot(r.sec)}
                     className="cursor-pointer border border-zinc-600 bg-zinc-950 rounded-2xl justify-center items-center flex h-8 hover:bg-zinc-900 w-24"
                   >
                     {r.time}
@@ -257,20 +299,30 @@ export default function Home() {
           </div>
           <div className="relative w-3/5 h-2/5 border border-zinc-600 bg-zinc-950 rounded-3xl">
             <div className="font-bold text-md ml-4 mt-2">Humidity monitoring</div>
-            <div className="absolute right-0 top-0 mt-2 mr-4 flex flex-row space-x-4">
-              {RANGE.map((r, i) => {
-                return (
-                  <div
-                    key={i}
-                    onClick={() => {
-                      plot(r.sec);
-                    }}
-                    className="cursor-pointer border border-zinc-600 bg-zinc-950 rounded-2xl justify-center items-center flex h-8 hover:bg-zinc-900 w-24"
-                  >
-                    {r.time}
-                  </div>
-                );
-              })}
+          </div>
+
+          <div className="border border-zinc-600 bg-zinc-950 min-h-1/5 absolute min-w-1/7 rounded-3xl right-1/35">
+            <div className="flex flex-col items-center mt-4">
+              <h1 className="text-md font-bold">List of your devices</h1>
+              {devices.length !== 0 ? (
+                <div className="mt-2 max-h-80 overflow-y-auto mb-4 text-sm flex flex-col items-center w-9/10 h-full">
+                  {devices.map((d, i) => {
+                    return (
+                      <div
+                        key={i}
+                        className="hover:text-violet-600 cursor-pointer"
+                        onClick={() => setSelectDevice(d)}
+                      >
+                        {d.name}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className=" text-violet-600 absolute top-2/5 ">
+                  You currently have no devices
+                </div>
+              )}
             </div>
           </div>
         </div>
