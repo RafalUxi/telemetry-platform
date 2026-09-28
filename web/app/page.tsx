@@ -4,6 +4,17 @@ import { useEffect, useRef, useState } from 'react';
 import { SiYoutube } from 'react-icons/si';
 import { FiGithub, FiLinkedin } from 'react-icons/fi';
 import { fetchDevices, fetchLogin, fetchRegister, fetchSeries } from '@/lib/api';
+import Graph from '@/components/graphs';
+
+type uplotChart = {
+  t: string;
+  tempAvg: number;
+  tempMin: number;
+  tempMax: number;
+  humAvg: number;
+  humMin: number;
+  humMax: number;
+};
 
 const RANGE = [
   { time: '15 min', sec: 900 },
@@ -11,6 +22,14 @@ const RANGE = [
   { time: '6 h', sec: 21600 },
   { time: '24 h', sec: 86400 },
 ];
+
+const takeTime = (sec: number) => {
+  const now = Date.now();
+  return {
+    from: new Date(now - sec * 1000).toISOString(),
+    to: new Date(now).toISOString(),
+  };
+};
 
 export default function Home() {
   const [log, setLog] = useState<boolean>(true);
@@ -26,7 +45,10 @@ export default function Home() {
     name: string;
   } | null>(null);
   const [devices, setDevices] = useState<{ id: string; devices: string; name: string }[]>([]);
+  const [chartTemp, setChartTemp] = useState<uPlot.AlignedData>([]);
+  const [chartHum, setChartHum] = useState<uPlot.AlignedData>([]);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const stop = useRef(false);
 
   const showAlert = (text: string) => {
     if (timer.current !== null) clearTimeout(timer.current);
@@ -39,13 +61,20 @@ export default function Home() {
       showAlert('Select device');
       return;
     }
-    const from = new Date(Date.now() - sec * 1000).toISOString();
-    const to = new Date().toISOString();
+    const { from, to } = takeTime(sec);
     const points = 800;
 
     const series = await fetchSeries(selectDevice.id, from, to, points);
 
     if (series.ok) {
+      const pointsChart: uplotChart[] = series.body ?? [];
+
+      const x = pointsChart.map((p) => new Date(p.t).getTime() / 1000);
+      const tempY = pointsChart.map((p) => p.tempAvg);
+      const humY = pointsChart.map((p) => p.humAvg);
+
+      setChartTemp([x, tempY] as uPlot.AlignedData);
+      setChartHum([x, humY] as uPlot.AlignedData);
     } else if (series.status === 401) {
       setLogged(false);
       showAlert('Your session has expired - please log in again');
@@ -56,6 +85,7 @@ export default function Home() {
 
   const readDevices = async () => {
     const devices = await fetchDevices();
+    if (stop.current) return;
     if (devices.ok) {
       setDevices(devices.body);
     } else if (devices.status === 401) {
@@ -67,9 +97,13 @@ export default function Home() {
   };
 
   useEffect(() => {
+    stop.current = false;
     if (logged) {
       readDevices();
     }
+    return () => {
+      stop.current = true;
+    };
   }, [logged]);
 
   const login = async (email: string, password: string) => {
@@ -267,6 +301,11 @@ export default function Home() {
   if (logged) {
     return (
       <div className="relative w-full h-screen bg-black z-0">
+        {alert !== null && (
+          <div className="text-violet-600 text-xl font-bold absolute bottom-0 w-screen flex justify-center">
+            {alert}
+          </div>
+        )}
         <div className="w-full flex justify-start items-center h-16 z-10 border-b bg-zinc-950 rounded-b-md border-zinc-600 ">
           <div className=" ml-6">
             <h1 className="text-md text-white font-bold">UXI | Telemetry Platform</h1>
@@ -296,9 +335,24 @@ export default function Home() {
                 );
               })}
             </div>
+            <Graph data={chartTemp} label="temperatura" stroke="#a78bfa" />
           </div>
           <div className="relative w-3/5 h-2/5 border border-zinc-600 bg-zinc-950 rounded-3xl">
             <div className="font-bold text-md ml-4 mt-2">Humidity monitoring</div>
+            <div className="absolute right-0 top-0 mt-2 mr-4 flex flex-row space-x-4">
+              {RANGE.map((r, i) => {
+                return (
+                  <div
+                    key={i}
+                    onClick={() => plot(r.sec)}
+                    className="cursor-pointer border border-zinc-600 bg-zinc-950 rounded-2xl justify-center items-center flex h-8 hover:bg-zinc-900 w-24"
+                  >
+                    {r.time}
+                  </div>
+                );
+              })}
+            </div>
+            <Graph data={chartHum} label="temperatura" stroke="#a78bfa" />
           </div>
 
           <div className="border border-zinc-600 bg-zinc-950 min-h-1/5 absolute min-w-1/7 rounded-3xl right-1/35">
