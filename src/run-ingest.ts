@@ -1,5 +1,7 @@
 import { createIngestQueue } from './queue.js';
 import { defaultIngestConfig, startIngest, stopIngest } from './ingest.js';
+import { logger } from './logger.js';
+const log = logger.child({ name: 'ingest' });
 
 // Ingest entry point.
 //
@@ -8,25 +10,25 @@ import { defaultIngestConfig, startIngest, stopIngest } from './ingest.js';
 //
 // Run with:  npx tsx src/run-ingest.ts
 
-console.log('Ingest is running');
+log.info('Ingest is running');
 
 const ingest = startIngest(createIngestQueue(), defaultIngestConfig);
 let processing: boolean = false;
 
 const onSignal = () => {
   if (processing === true) {
-    console.log(`Second event ignored - the closing is already in progress`);
+    log.warn(`Second event ignored - the closing is already in progress`);
     return;
   }
   processing = true;
-  console.log('The closing started');
+  log.info('The closing started');
   stopIngest(ingest)
     .then(() => {
       process.exitCode = 0;
-      console.log(`The closing is done (ingest)`);
+      log.info(`The closing is done (ingest)`);
     })
     .catch((err: Error) => {
-      console.error('shutdown failed:', err.message);
+      log.error({ err }, 'shutdown failed');
       process.exitCode = 1;
     });
 };

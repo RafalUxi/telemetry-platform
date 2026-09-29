@@ -1,5 +1,7 @@
 import { createPool } from './db.js';
 import { defaultWorkerConfig, startWorker, stopWorker } from './worker.js';
+import { logger } from './logger.js';
+const log = logger.child({ name: 'worker' });
 
 // Worker entry point.
 //
@@ -9,25 +11,25 @@ import { defaultWorkerConfig, startWorker, stopWorker } from './worker.js';
 //
 // Run with:  npx tsx src/run-worker.ts
 
-console.log('Worker is running');
+log.info('Worker is running');
 
 const worker = startWorker(createPool(defaultWorkerConfig.concurrency), defaultWorkerConfig);
 let processing: boolean = false;
 
 const onSignal = () => {
   if (processing === true) {
-    console.log(`Second event ignored - the closing is already in progress`);
+    log.warn(`Second event ignored - the closing is already in progress`);
     return;
   }
   processing = true;
-  console.log('The closing started');
+  log.info('The closing started');
   stopWorker(worker)
     .then(() => {
       process.exitCode = 0;
-      console.log(`The closing is done (worker)`);
+      log.info(`The closing is done (worker)`);
     })
     .catch((err: Error) => {
-      console.error('shutdown failed:', err.message);
+      log.error({ err }, 'shutdown failed');
       process.exitCode = 1;
     });
 };

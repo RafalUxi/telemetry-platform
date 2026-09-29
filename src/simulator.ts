@@ -1,5 +1,8 @@
 import mqtt, { type MqttClient } from 'mqtt';
 import type { Sample } from './contract.js';
+import { logger } from './logger.js';
+
+const log = logger.child({ name: 'simulator' });
 
 // Device fleet simulator.
 
@@ -203,7 +206,7 @@ export function startDevice(device: Device, config: SimulatorConfig): void {
   });
 
   device.client.once('error', (err) => {
-    console.error(err.message);
+    log.error({ err, deviceId: device.deviceId }, err.message);
     if (/not authoris|not authorized|bad user name/i.test(err.message)) {
       process.exit(1);
     }
@@ -277,7 +280,7 @@ export async function stopFleet(devices: Device[]): Promise<void> {
   }
 
   if (stopTimeError > 0) {
-    console.log(`Number of devices that did not start (during start process) - ${stopTimeError}`);
+    log.info(`Number of devices that did not start (during start process) - ${stopTimeError}`);
   }
 
   const promise = await Promise.allSettled(devices.map((p) => closeDevice(p)));
@@ -285,13 +288,13 @@ export async function stopFleet(devices: Device[]): Promise<void> {
   const notOpen = promise.filter((d) => d.status === 'fulfilled' && d.value === 'notOpen');
   const upClosed = promise.filter((d) => d.status === 'fulfilled' && d.value === undefined);
 
-  console.log(`Number of devices not opened: ${notOpen.length}/${promise.length}`);
-  console.log(`Number of devices shut down: ${upClosed.length}/${promise.length}`);
+  log.info(`Number of devices not opened: ${notOpen.length}/${promise.length}`);
+  log.info(`Number of devices shut down: ${upClosed.length}/${promise.length}`);
 
   const down = promise.filter((w) => w.status === 'rejected');
 
   if (down.length > 0) {
-    console.log(
+    log.error(
       `Number of processes that run down: ${down.length}/${promise.length}; reason: ${down.map((w) => w.reason.message).join(` ,`)}`,
     );
   }

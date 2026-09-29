@@ -1,4 +1,6 @@
 import { defaultConfig, startFleet, stopFleet, type Device } from './simulator.js';
+import { logger } from './logger.js';
+const log = logger.child({ name: 'simulator' });
 
 // Simulator entry point.
 
@@ -9,23 +11,23 @@ import { defaultConfig, startFleet, stopFleet, type Device } from './simulator.j
 
 // Stops the fleet and brings the process to an end.
 
-console.log('simulator is running');
+log.info('simulator is running');
 
 const fleet = startFleet(defaultConfig);
 let processing: boolean = false;
 
 async function shutdown(devices: Device[]): Promise<void> {
   if (processing === true) {
-    console.log(`Second event ignored - the closing is already in progress`);
+    log.warn(`Second event ignored - the closing is already in progress`);
     return;
   }
   processing = true; // Set the flag before the first suspension point
-  console.log('The closing started');
+  log.info('The closing started');
   await stopFleet(devices);
 }
 
 process.on('SIGINT', async () => {
   await shutdown(fleet);
-  console.log(`The closing is done`);
+  log.info(`The closing is done`);
   process.exit(0);
 });

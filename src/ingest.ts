@@ -2,6 +2,9 @@ import mqtt, { type MqttClient } from 'mqtt';
 import type { Queue } from 'bullmq';
 import type { IngestJob } from './queue.js';
 import { decode, type DeviceMessage, parseMessage } from './contract.js';
+import { logger } from './logger.js';
+
+const log = logger.child({ name: 'ingest' });
 
 // MQTT ingest.
 
@@ -128,7 +131,7 @@ export function startIngest(queue: Queue<IngestJob>, config: IngestConfig): Inge
   });
 
   client.on('error', (err) => {
-    console.error(err.message);
+    log.error({ err }, err.message);
     if (/not authoris|not authorized|bad user name/i.test(err.message)) {
       process.exit(1);
     }
@@ -136,9 +139,9 @@ export function startIngest(queue: Queue<IngestJob>, config: IngestConfig): Inge
 
   client.on(`connect`, () => {
     client.subscribe(config.topicFilter, { qos: 1 }, (err, granted) => {
-      if (err) return console.error('subscribe failed:', err.message);
+      if (err) return log.error({ err }, 'subscribe failed');
       for (const g of granted ?? []) {
-        if (g.qos === 128) console.error('Broker decline subscription:', g.topic);
+        if (g.qos === 128) log.error({ topic: g.topic }, 'Broker decline subscription');
       }
     });
   });
@@ -150,7 +153,7 @@ export function startIngest(queue: Queue<IngestJob>, config: IngestConfig): Inge
       queue
         .add('IngestJob', jobResults.job)
         .then(() => (stats.enqueued += 1))
-        .catch((err: Error) => console.error(`queue add failed`, err.message));
+        .catch((err: Error) => log.error({ err }, `queue add failed`));
     }
 
     if (jobResults.ok === false) {
@@ -164,8 +167,8 @@ export function startIngest(queue: Queue<IngestJob>, config: IngestConfig): Inge
   const statsTimer = setInterval(() => {
     queue
       .getJobCounts()
-      .then((counts) => console.log(stats, counts))
-      .catch((err: Error) => console.error(`can't reach counters`, err.message));
+      .then((counts) => log.info({ stats, counts }))
+      .catch((err: Error) => log.error({ err }, `can't reach counters`));
   }, config.statsIntervalMs);
 
   return { client: client, queue: queue, stats: stats, statsTimer: statsTimer };
@@ -184,5 +187,5 @@ export async function stopIngest(ingest: Ingest): Promise<void> {
   await ingest.client.endAsync();
   await ingest.queue.close();
 
-  console.log('To sum up (counters)', ingest.stats);
+  log.info(ingest.stats, 'To sum up (counters)');
 }

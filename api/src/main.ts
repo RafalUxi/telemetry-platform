@@ -1,10 +1,12 @@
 import { NestFactory } from '@nestjs/core';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import { DB } from './db/db.module.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  app.useLogger(app.get(Logger));
   const db = app.get(DB);
   await migrate(db, { migrationsFolder: 'drizzle' });
   app.enableCors({

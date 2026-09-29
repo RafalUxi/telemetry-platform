@@ -1,6 +1,9 @@
 import { Worker } from 'bullmq';
 import { Result, type Pool } from 'pg';
 import { connection, QUEUE_NAME, type IngestJob } from './queue.js';
+import { logger } from './logger.js';
+
+const log = logger.child({ name: 'worker' });
 
 // The worker: takes jobs off the queue and writes them to postgres.
 //
@@ -108,18 +111,18 @@ export function startWorker(pool: Pool, config: WorkerConfig): Ingester {
   );
 
   const statsTimer = setInterval(() => {
-    console.log(stats);
+    log.info(stats);
   }, config.statsIntervalMs);
 
   void worker.run();
 
   worker.on(`error`, (err: Error) => {
-    console.error(err.message);
+    log.error({ err }, err.message);
   });
 
   worker.on('failed', (job, err) => {
     stats.failed += 1;
-    console.error(`Task: ${job?.id}; probe: ${job?.attemptsMade}:`, err.message);
+    log.error({ err, jobId: job?.id, attemptsMade: job?.attemptsMade }, 'Task failed');
   });
 
   worker.on('completed', (job, result) => {
@@ -144,5 +147,5 @@ export async function stopWorker(ingester: Ingester): Promise<void> {
   await ingester.worker.close();
   await ingester.pool.end();
 
-  console.log('To sum up (counters)', ingester.stats);
+  log.info(ingester.stats, 'To sum up (counters)');
 }
