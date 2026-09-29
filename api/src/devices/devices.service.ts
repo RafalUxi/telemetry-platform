@@ -18,14 +18,19 @@ export class DevicesService implements OnModuleInit {
   constructor(@Inject(DB) private readonly db: NodePgDatabase<typeof schema>) {}
 
   async onModuleInit() {
-    this.client = await mqtt.connectAsync(
-      process.env.MQTT_URL ?? 'mqtt://localhost:1883',
-      {
-        username: process.env.MQTT_ADMIN_USERNAME,
-        password: process.env.MQTT_ADMIN_PASSWORD,
-        protocolVersion: 5,
-      },
-    );
+    try {
+      this.client = await mqtt.connectAsync(
+        process.env.MQTT_URL ?? 'mqtt://localhost:1883',
+        {
+          username: process.env.MQTT_ADMIN_USERNAME,
+          password: process.env.MQTT_ADMIN_PASSWORD,
+          protocolVersion: 5,
+        },
+      );
+    } catch (err) {
+      this.logger.error('The broker does not exist');
+      throw err;
+    }
 
     await this.client.subscribeAsync('$CONTROL/dynamic-security/v1/response');
     await this.client.subscribeAsync('devices/+/telemetry');

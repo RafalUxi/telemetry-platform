@@ -202,6 +202,13 @@ export function startDevice(device: Device, config: SimulatorConfig): void {
     password: process.env.MQTT_SIM_PASSWORD,
   });
 
+  device.client.once('error', (err) => {
+    console.error(err.message);
+    if (/not authoris|not authorized|bad user name/i.test(err.message)) {
+      process.exit(1);
+    }
+  });
+
   device.timer = setInterval(() => {
     tick(device, config);
   }, config.sampleIntervalMs);

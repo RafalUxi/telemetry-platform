@@ -15,6 +15,17 @@ services:
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto-data:/mosquitto/data
+    environment:
+      MQTT_ADMIN_USERNAME: ${MQTT_ADMIN_USERNAME}
+      MQTT_ADMIN_PASSWORD: ${MQTT_ADMIN_PASSWORD}
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - mosquitto_sub -h localhost -p 1883 -u "$$MQTT_ADMIN_USERNAME" -P "$$MQTT_ADMIN_PASSWORD" -t '$$SYS/broker/uptime' -C 1 -W 3 >/dev/null || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
     restart: unless-stopped
 
   postgres:
@@ -31,6 +42,12 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB} || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 20s
 
   redis:
     image: redis:7-alpine
@@ -41,24 +58,35 @@ services:
     volumes:
       - redis-data:/data
     restart: unless-stopped
+    healthcheck:
+      test: ['CMD-SHELL', 'redis-cli ping | grep -q PONG || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
   api:
     build: ./api
     image: telemetry-api:0.1
     ports:
-      # 3000 dla komend z WSL, 4300 dla przegladarki na Windowsie - zakres
-      # 2991-3690 jest zarezerwowany przez Hyper-V, wiec relay WSL go nie wystawia
       - '3000:3000'
       - '4300:3000'
     env_file: .env
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       MQTT_URL: mqtt://mosquitto:1883
-    depends_on:
-      - mosquitto
-      - postgres
     init: true
     restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mosquitto:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://localhost:3000/ >/dev/null || exit 1']
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
 
   ingest:
     build: .
@@ -69,8 +97,10 @@ services:
       MQTT_URL: mqtt://mosquitto:1883
       REDIS_URL: redis://redis:6379
     depends_on:
-      - mosquitto
-      - redis
+      mosquitto:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     init: true
     restart: unless-stopped
 
@@ -83,8 +113,10 @@ services:
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       REDIS_URL: redis://redis:6379
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     init: true
     restart: unless-stopped
 
@@ -97,7 +129,8 @@ services:
     environment:
       MQTT_URL: mqtt://mosquitto:1883
     depends_on:
-      - mosquitto
+      mosquitto:
+        condition: service_healthy
     init: true
     restart: unless-stopped
 
@@ -108,7 +141,8 @@ services:
     volumes:
       - ./cloudflared:/etc/cloudflared:ro
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

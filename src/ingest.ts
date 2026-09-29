@@ -127,7 +127,12 @@ export function startIngest(queue: Queue<IngestJob>, config: IngestConfig): Inge
     password: process.env.MQTT_INGEST_PASSWORD,
   });
 
-  client.on(`error`, (err) => console.error('Connection ingest error', err.message));
+  client.on('error', (err) => {
+    console.error(err.message);
+    if (/not authoris|not authorized|bad user name/i.test(err.message)) {
+      process.exit(1);
+    }
+  });
 
   client.on(`connect`, () => {
     client.subscribe(config.topicFilter, { qos: 1 }, (err, granted) => {
