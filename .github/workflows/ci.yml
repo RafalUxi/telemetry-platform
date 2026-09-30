@@ -36,6 +36,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The default buildx driver is "docker", which cannot export a cache.
+      # This step creates a docker-container builder, which can.
+      - uses: docker/setup-buildx-action@v3
+
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
