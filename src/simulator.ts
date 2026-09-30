@@ -44,7 +44,7 @@ export interface SimulatorConfig {
 
 export const defaultConfig: SimulatorConfig = {
   brokerUrl: process.env.MQTT_URL ?? 'mqtt://localhost:1883',
-  deviceCount: 200,
+  deviceCount: Number(process.env.SIM_DEVICE_COUNT ?? 10),
   sampleIntervalMs: 1000,
   batchMaxSize: 50,
   bufferMaxSize: 500,
