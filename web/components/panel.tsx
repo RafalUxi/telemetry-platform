@@ -394,15 +394,38 @@ export default function Panel() {
               {devices.length !== 0 ? (
                 <div className="mt-2 max-h-80 overflow-y-auto mb-4 text-sm flex flex-col items-center w-9/10 h-full">
                   {devices.map((d, i) => {
-                    return (
-                      <div
-                        key={i}
-                        className="hover:text-violet-600 cursor-pointer"
-                        onClick={() => setSelectDevice(d)}
-                      >
-                        {d.name}
-                      </div>
-                    );
+                    if (selectDevice === null) {
+                      return (
+                        <div
+                          key={i}
+                          className="hover:text-violet-600 cursor-pointer"
+                          onClick={() => setSelectDevice(d)}
+                        >
+                          {d.name}
+                        </div>
+                      );
+                    }
+                    if (selectDevice.id === d.id) {
+                      return (
+                        <div
+                          key={i}
+                          className="hover:text-violet-600 text-violet-400 cursor-pointer"
+                          onClick={() => setSelectDevice(d)}
+                        >
+                          {d.name}
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div
+                          key={i}
+                          className="hover:text-violet-600 cursor-pointer"
+                          onClick={() => setSelectDevice(d)}
+                        >
+                          {d.name}
+                        </div>
+                      );
+                    }
                   })}
                 </div>
               ) : (
