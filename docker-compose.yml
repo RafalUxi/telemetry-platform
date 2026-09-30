@@ -66,7 +66,7 @@ services:
 
   api:
     build: ./api
-    image: telemetry-api:0.1
+    image: ghcr.io/rafaluxi/telemetry-api:latest
     ports:
       - '3000:3000'
       - '4300:3000'
@@ -90,7 +90,7 @@ services:
 
   ingest:
     build: .
-    image: telemetry-procesy:0.1
+    image: ghcr.io/rafaluxi/telemetry-procesy:latest
     command: node dist/run-ingest.js
     env_file: .env
     environment:
@@ -106,7 +106,7 @@ services:
 
   worker:
     build: .
-    image: telemetry-procesy:0.1
+    image: ghcr.io/rafaluxi/telemetry-procesy:latest
     command: node dist/run-worker.js
     env_file: .env
     environment:
@@ -122,7 +122,7 @@ services:
 
   simulator:
     build: .
-    image: telemetry-procesy:0.1
+    image: ghcr.io/rafaluxi/telemetry-procesy:latest
     command: node dist/run-simulator.js
     profiles: ['demo']
     env_file: .env
