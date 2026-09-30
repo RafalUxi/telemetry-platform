@@ -136,7 +136,7 @@ services:
 
   cloudflared:
     image: cloudflare/cloudflared:latest
-    user: '1000:1000'
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     command: tunnel --no-autoupdate --config /etc/cloudflared/config.yml run
     volumes:
       - ./cloudflared:/etc/cloudflared:ro
