@@ -12,3 +12,5 @@ _*
 !_journal.json
 *.tsbuildinfo
 cloudflared/
+firmware/build/
+firmware/sdkconfig
