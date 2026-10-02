@@ -1,0 +1,19 @@
+menu "Telemetry device"
+
+config WIFI_SSID
+    string "WiFi SSID"
+    default "myssid"
+    help
+        Name of the network this device joins.
+
+config WIFI_PASSWORD
+    string "WIFI PASSWORD"
+    default ""
+    help
+        Leave empty for an open network.
+
+config WIFI_MAX_RETRY
+    int "Maximum connection attempts before giving up"
+    default 5
+
+endmenu
