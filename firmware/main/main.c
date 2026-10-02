@@ -19,6 +19,12 @@
 #include "esp_wifi.h"
 #include "freertos/event_groups.h"
 #include "sdkconfig.h"
+#include "esp_netif_sntp.h"
+#include <sys/time.h>
+#include "mqtt_client.h"
+
+#define MQTT_CONNECTED_BIT BIT2
+#define MQTT_FAILED_BIT    BIT3
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAILED_BIT    BIT1
@@ -51,6 +57,35 @@ static void on_wifi_event(void *arg, esp_event_base_t base, int32_t id, void *da
         ESP_LOGI(TAG, "IP: " IPSTR, IP2STR(&event->ip_info.ip));
         retry_count = 0;
         xEventGroupSetBits(wifi_events, WIFI_CONNECTED_BIT);
+    }
+}
+
+static void on_mqtt_event(void *arg, esp_event_base_t base, int32_t id, void *data)
+{
+    esp_mqtt_event_handle_t event = (esp_mqtt_event_handle_t) data;
+
+    switch ((esp_mqtt_event_id_t) id) {
+    case MQTT_EVENT_CONNECTED:
+        ESP_LOGI(TAG, "broker connected");
+        xEventGroupSetBits(wifi_events, MQTT_CONNECTED_BIT);
+        break;
+
+    case MQTT_EVENT_DISCONNECTED:
+        ESP_LOGW(TAG, "broker disconnected");
+        break;
+
+    case MQTT_EVENT_PUBLISHED:
+        ESP_LOGI(TAG, "broker acknowledged msg_id %d", event->msg_id);
+        break;
+
+    case MQTT_EVENT_ERROR:
+        ESP_LOGE(TAG, "mqtt error, connect_return_code %d",
+                 event->error_handle->connect_return_code);
+        xEventGroupSetBits(wifi_events, MQTT_FAILED_BIT);
+        break;
+
+    default:
+        break;
     }
 }
 
@@ -111,11 +146,64 @@ if (bits & WIFI_CONNECTED_BIT) {
     ESP_LOGE(TAG, "could not connect to %s", CONFIG_WIFI_SSID);
 }
 
+esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
+ESP_ERROR_CHECK(esp_netif_sntp_init(&sntp_cfg));
+esp_err_t sync = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(20000));
+if(sync != ESP_OK){
+    ESP_LOGE(TAG, "Time synchronization error %s", esp_err_to_name(sync));
+    sync = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000));
+}
+
+esp_mqtt_client_config_t mqtt_cfg = {
+    .broker.address.uri = CONFIG_MQTT_BROKER_URI,
+    .credentials.username = CONFIG_DEVICE_ID,
+    .credentials.client_id = CONFIG_DEVICE_ID,
+    .credentials.authentication.password = CONFIG_DEVICE_PASSWORD,
+};
+
+esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
+ESP_ERROR_CHECK(esp_mqtt_client_register_event(client, MQTT_EVENT_ANY, &on_mqtt_event, NULL));
+ESP_ERROR_CHECK(esp_mqtt_client_start(client));
+
+EventBits_t mqtt_bits = xEventGroupWaitBits(
+    wifi_events, MQTT_CONNECTED_BIT | MQTT_FAILED_BIT,
+    pdFALSE, pdFALSE, pdMS_TO_TICKS(15000));
+
+if (!(mqtt_bits & MQTT_CONNECTED_BIT)) {
+    ESP_LOGE(TAG, "no connection to the broker");
+    return;
+}
+
+char topic[64];
+snprintf(topic, sizeof(topic), "devices/%s/telemetry", CONFIG_DEVICE_ID);
+
+struct timeval tv;
+gettimeofday(&tv, NULL);
+int64_t device_ts = (int64_t) tv.tv_sec * 1000 + tv.tv_usec / 1000;
+
+ESP_LOGI(TAG, "device_ts: %lld", device_ts);
+
+char payload[256];
+int n = snprintf(payload, sizeof(payload),
+    "{\"device_id\":\"%s\",\"boot_id\":0,"
+    "\"samples\":[{\"seq\":0,\"device_ts\":%lld,\"temperature\":%.2f,\"humidity\":%.2f}]}",
+    CONFIG_DEVICE_ID, device_ts, 21.5, 48.0);
+
+if (n < 0 || n >= (int) sizeof(payload)) {
+    ESP_LOGE(TAG, "payload does not fit, needed %d bytes", n);
+    return;
+}
+
+int msg_id = esp_mqtt_client_publish(client, topic, payload, n, 1, 0);
+ESP_LOGI(TAG, "published msg_id %d, %d bytes", msg_id, n);
+
 
 
 esp_chip_info_t info;
 esp_chip_info(&info);
 ESP_LOGI(TAG, "cores: %d; revision: %d", info.cores, info.revision);
+
+
 
 esp_err_t errMac = esp_read_mac(mac, ESP_MAC_WIFI_STA);
 if (errMac != ESP_OK) {
