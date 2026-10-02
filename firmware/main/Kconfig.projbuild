@@ -16,4 +16,18 @@ config WIFI_MAX_RETRY
     int "Maximum connection attempts before giving up"
     default 5
 
+config MQTT_BROKER_URI
+    string "Broker URI"
+    default "mqtt://192.168.1.18:1883"
+    help
+        Address of the MQTT broker on the development machine.
+
+config DEVICE_ID
+    string "Device id registered through the API"
+    default ""
+
+config DEVICE_PASSWORD
+    string "Device password shown once at registration"
+    default ""
+
 endmenu
