@@ -12,6 +12,7 @@ services:
     image: eclipse-mosquitto:2
     ports:
       - '1883:1883'
+      - '9001:9001'
     volumes:
       - ./mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
       - mosquitto-data:/mosquitto/data
@@ -68,7 +69,8 @@ services:
     build: ./api
     image: ghcr.io/rafaluxi/telemetry-api:latest
     ports:
-      - '3000:3000'
+      # Only 4300: port 3000 is the default for every dev server, and the
+      # container was taking it from them.
       - '4300:3000'
     env_file: .env
     environment:
