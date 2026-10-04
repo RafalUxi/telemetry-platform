@@ -30,4 +30,12 @@ config DEVICE_PASSWORD
     string "Device password shown once at registration"
     default ""
 
+config I2C_SDA_GPIO
+    int "I2C SDA pin"
+    default 21
+
+config I2C_SCL_GPIO
+    int "I2C SCL pin"
+    default 22
+
 endmenu

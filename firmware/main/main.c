@@ -22,6 +22,9 @@
 #include "esp_netif_sntp.h"
 #include <sys/time.h>
 #include "mqtt_client.h"
+#include "driver/i2c_master.h"
+
+#define AHT20_ADDR 0x38
 
 #define MQTT_CONNECTED_BIT BIT2
 #define MQTT_FAILED_BIT    BIT3
@@ -89,12 +92,60 @@ static void on_mqtt_event(void *arg, esp_event_base_t base, int32_t id, void *da
     }
 }
 
+static esp_err_t aht20_read(i2c_master_dev_handle_t dev, float *temperature, float *humidity)
+{
+    const uint8_t trigger[3] = {0xAC, 0x33, 0x00};
+    esp_err_t err = i2c_master_transmit(dev, trigger, sizeof(trigger), 200);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100));
+
+    uint8_t raw[6];
+    err = i2c_master_receive(dev, raw, sizeof(raw), 200);
+    if (err != ESP_OK) {
+        return err;
+    }
+
+    if (raw[0] & 0x80) {
+        return ESP_ERR_TIMEOUT;
+    }
+
+    uint32_t hum_raw  = ((uint32_t) raw[1] << 12) | ((uint32_t) raw[2] << 4) | (raw[3] >> 4);
+    uint32_t temp_raw = (((uint32_t) raw[3] & 0x0F) << 16) | ((uint32_t) raw[4] << 8) | raw[5];
+
+    *humidity    = hum_raw  * 100.0f / 1048576.0f;
+    *temperature = temp_raw * 200.0f / 1048576.0f - 50.0f;
+
+    return ESP_OK;
+}
+
 
 void app_main(void)
 {
 uint8_t mac[6];
 uint32_t heap_size;
 
+
+i2c_master_bus_config_t bus_cfg = {
+    .i2c_port = -1,
+    .sda_io_num = CONFIG_I2C_SDA_GPIO,
+    .scl_io_num = CONFIG_I2C_SCL_GPIO,
+    .clk_source = I2C_CLK_SRC_DEFAULT,
+    .glitch_ignore_cnt = 7,
+    .flags.enable_internal_pullup = true,
+};
+i2c_master_bus_handle_t bus;
+ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &bus));
+
+i2c_device_config_t dev_cfg = {
+    .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+    .device_address = AHT20_ADDR,
+    .scl_speed_hz = 100000,
+};
+i2c_master_dev_handle_t sensor;
+ESP_ERROR_CHECK(i2c_master_bus_add_device(bus, &dev_cfg, &sensor));
 
 esp_err_t err = nvs_flash_init();
 if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -184,10 +235,19 @@ int64_t device_ts = (int64_t) tv.tv_sec * 1000 + tv.tv_usec / 1000;
 ESP_LOGI(TAG, "device_ts: %lld", device_ts);
 
 char payload[256];
+float temperature = 0.0f;
+float humidity = 0.0f;
+esp_err_t sensor_err = aht20_read(sensor, &temperature, &humidity);
+if (sensor_err != ESP_OK) {
+    ESP_LOGE(TAG, "sensor read failed: %s", esp_err_to_name(sensor_err));
+    return;
+}
+ESP_LOGI(TAG, "sensor: %.2f C, %.2f %%RH", temperature, humidity);
+
 int n = snprintf(payload, sizeof(payload),
     "{\"device_id\":\"%s\",\"boot_id\":0,"
     "\"samples\":[{\"seq\":0,\"device_ts\":%lld,\"temperature\":%.2f,\"humidity\":%.2f}]}",
-    CONFIG_DEVICE_ID, device_ts, 21.5, 48.0);
+    CONFIG_DEVICE_ID, device_ts, temperature, humidity);
 
 if (n < 0 || n >= (int) sizeof(payload)) {
     ESP_LOGE(TAG, "payload does not fit, needed %d bytes", n);
