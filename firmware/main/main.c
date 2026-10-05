@@ -40,6 +40,12 @@ static uint32_t dropped_count;
 static char     payload[4096];
 static uint32_t boot_id;
 
+static char wifi_ssid[33];
+static char wifi_pass[65];
+static char device_id[33];
+static char device_pass[65];
+static char broker_uri[128];
+
 
 #define AHT20_ADDR 0x38
 
@@ -190,7 +196,7 @@ static int build_payload(size_t count)
 
     int written = snprintf(payload, sizeof(payload),
                            "{\"device_id\":\"%s\",\"boot_id\":%lu,\"samples\":[",
-                           CONFIG_DEVICE_ID, (unsigned long) boot_id);
+                           device_id, (unsigned long) boot_id);
     if (written < 0 || (size_t) written >= sizeof(payload)) {
         return -1;
     }
@@ -242,6 +248,34 @@ static void buffer_flush(esp_mqtt_client_handle_t client, const char *topic)
     memmove(buffer, buffer + count, buffer_count * sizeof(sample_t));
 }
 
+static esp_err_t load_str(nvs_handle_t nvs, const char *key, char *out, size_t size)
+{
+    size_t len = size;
+    esp_err_t err = nvs_get_str(nvs, key, out, &len);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "key '%s': %s", key, esp_err_to_name(err));
+    }
+    return err;
+}
+
+static esp_err_t load_credentials(void)
+{
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open("device", NVS_READONLY, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "nvs_open failed: %s", esp_err_to_name(err));
+        return err;
+    }
+
+    err  = load_str(nvs, "wifi_ssid",  wifi_ssid,   sizeof(wifi_ssid));
+    err |= load_str(nvs, "wifi_pass",  wifi_pass,   sizeof(wifi_pass));
+    err |= load_str(nvs, "dev_id",     device_id,   sizeof(device_id));
+    err |= load_str(nvs, "dev_pass",   device_pass, sizeof(device_pass));
+    err |= load_str(nvs, "broker_uri", broker_uri,  sizeof(broker_uri));
+
+    nvs_close(nvs);
+    return err == ESP_OK ? ESP_OK : ESP_FAIL;
+}
 
 void app_main(void)
 {
@@ -275,6 +309,11 @@ if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
 }
 ESP_ERROR_CHECK(err);
 
+if (load_credentials() != ESP_OK) {
+    ESP_LOGE(TAG, "no credentials in NVS, provision the device first");
+    return;
+}
+
 ESP_ERROR_CHECK(esp_netif_init());
 ESP_ERROR_CHECK(esp_event_loop_create_default());
 esp_netif_create_default_wifi_sta();
@@ -295,12 +334,9 @@ ESP_LOGI(TAG, "free heap befour wifi: %lu", esp_get_free_heap_size());
 wifi_init_config_t init_cfg = WIFI_INIT_CONFIG_DEFAULT();
 ESP_ERROR_CHECK(esp_wifi_init(&init_cfg));
 
-wifi_config_t wifi_cfg = {
-    .sta = {
-        .ssid = CONFIG_WIFI_SSID,
-        .password = CONFIG_WIFI_PASSWORD,
-    },
-};
+wifi_config_t wifi_cfg = { 0 };
+strncpy((char *) wifi_cfg.sta.ssid, wifi_ssid, sizeof(wifi_cfg.sta.ssid));
+strncpy((char *) wifi_cfg.sta.password, wifi_pass, sizeof(wifi_cfg.sta.password));
 
 ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
 ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
@@ -313,9 +349,9 @@ EventBits_t bits = xEventGroupWaitBits(
 ESP_LOGI(TAG, "free heap after wifi: %lu", esp_get_free_heap_size());
 
 if (bits & WIFI_CONNECTED_BIT) {
-    ESP_LOGI(TAG, "connected to %s", CONFIG_WIFI_SSID);
+    ESP_LOGI(TAG, "connected to %s", wifi_ssid);
 } else {
-    ESP_LOGE(TAG, "could not connect to %s", CONFIG_WIFI_SSID);
+    ESP_LOGE(TAG, "could not connect to %s", wifi_ssid);
 }
 
 esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
@@ -327,10 +363,10 @@ if(sync != ESP_OK){
 }
 
 esp_mqtt_client_config_t mqtt_cfg = {
-    .broker.address.uri = CONFIG_MQTT_BROKER_URI,
-    .credentials.username = CONFIG_DEVICE_ID,
-    .credentials.client_id = CONFIG_DEVICE_ID,
-    .credentials.authentication.password = CONFIG_DEVICE_PASSWORD,
+    .broker.address.uri = broker_uri,
+    .credentials.username = device_id,
+    .credentials.client_id = device_id,
+    .credentials.authentication.password = device_pass,
 };
 
 esp_mqtt_client_handle_t client = esp_mqtt_client_init(&mqtt_cfg);
@@ -347,7 +383,7 @@ if (!(mqtt_bits & MQTT_CONNECTED_BIT)) {
 }
 
 char topic[64];
-snprintf(topic, sizeof(topic), "devices/%s/telemetry", CONFIG_DEVICE_ID);
+snprintf(topic, sizeof(topic), "devices/%s/telemetry", device_id);
 
 struct timeval tv;
 gettimeofday(&tv, NULL);
