@@ -26,6 +26,7 @@
 #include "esp_timer.h"
 #include "nvs.h"
 #include <string.h>
+#include "esp_crt_bundle.h"
 
 typedef struct {
     uint32_t seq;
@@ -364,6 +365,7 @@ if(sync != ESP_OK){
 
 esp_mqtt_client_config_t mqtt_cfg = {
     .broker.address.uri = broker_uri,
+    .broker.verification.crt_bundle_attach = esp_crt_bundle_attach,
     .credentials.username = device_id,
     .credentials.client_id = device_id,
     .credentials.authentication.password = device_pass,
@@ -413,9 +415,10 @@ for (;;) {
     }
 
     if (seq % 15 == 0) {
-        ESP_LOGI(TAG, "buffer %u/%d, dropped %lu",
+        ESP_LOGI(TAG, "buffer %u/%d, dropped %lu, free heap %lu",
                  (unsigned) buffer_count, CONFIG_BUFFER_MAX,
-                 (unsigned long) dropped_count);
+                 (unsigned long) dropped_count,
+                 (unsigned long) esp_get_free_heap_size());
     }
 
     xTaskDelayUntil(&last_wake, pdMS_TO_TICKS(CONFIG_SAMPLE_INTERVAL_MS));

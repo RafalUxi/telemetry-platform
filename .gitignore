@@ -14,3 +14,7 @@ _*
 cloudflared/
 firmware/build/
 firmware/sdkconfig
+firmware/sdkconfig.old
+firmware/nvs.csv
+firmware/nvs.bin
+firmware/prod-device.json
