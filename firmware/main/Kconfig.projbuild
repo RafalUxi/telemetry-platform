@@ -38,4 +38,16 @@ config I2C_SCL_GPIO
     int "I2C SCL pin"
     default 22
 
+config SAMPLE_INTERVAL_MS
+    int "Milliseconds between measurements"
+    default 1000
+
+config BUFFER_MAX
+    int "How many samples the device keeps when offline"
+    default 500
+
+config BATCH_MAX
+    int "How many samples go into one message"
+    default 50
+
 endmenu

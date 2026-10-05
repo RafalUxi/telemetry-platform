@@ -23,6 +23,23 @@
 #include <sys/time.h>
 #include "mqtt_client.h"
 #include "driver/i2c_master.h"
+#include "esp_timer.h"
+#include "nvs.h"
+#include <string.h>
+
+typedef struct {
+    uint32_t seq;
+    int64_t  mono_us;
+    float    temperature;
+    float    humidity;
+} sample_t;
+
+static sample_t buffer[CONFIG_BUFFER_MAX];
+static size_t   buffer_count;
+static uint32_t dropped_count;
+static char     payload[4096];
+static uint32_t boot_id;
+
 
 #define AHT20_ADDR 0x38
 
@@ -75,6 +92,7 @@ static void on_mqtt_event(void *arg, esp_event_base_t base, int32_t id, void *da
 
     case MQTT_EVENT_DISCONNECTED:
         ESP_LOGW(TAG, "broker disconnected");
+        xEventGroupClearBits(wifi_events, MQTT_CONNECTED_BIT);
         break;
 
     case MQTT_EVENT_PUBLISHED:
@@ -119,6 +137,109 @@ static esp_err_t aht20_read(i2c_master_dev_handle_t dev, float *temperature, flo
     *temperature = temp_raw * 200.0f / 1048576.0f - 50.0f;
 
     return ESP_OK;
+}
+
+static uint32_t next_boot_id(void)
+{
+    nvs_handle_t nvs;
+    esp_err_t err = nvs_open("device", NVS_READWRITE, &nvs);
+    if (err != ESP_OK) {
+        ESP_LOGE(TAG, "nvs_open failed: %s", esp_err_to_name(err));
+        return 0;
+    }
+
+    uint32_t value = 0;
+    err = nvs_get_u32(nvs, "boot_id", &value);
+    if (err == ESP_ERR_NVS_NOT_FOUND) {
+        value = 0;
+    } else if (err != ESP_OK) {
+        ESP_LOGE(TAG, "nvs_get_u32 failed: %s", esp_err_to_name(err));
+        nvs_close(nvs);
+        return 0;
+    }
+
+    value++;
+    if (nvs_set_u32(nvs, "boot_id", value) != ESP_OK || nvs_commit(nvs) != ESP_OK) {
+        ESP_LOGE(TAG, "boot_id not persisted, it will repeat after the next boot");
+    }
+
+    nvs_close(nvs);
+    return value;
+}
+
+static void buffer_append(uint32_t seq, float temperature, float humidity)
+{
+    if (buffer_count >= CONFIG_BUFFER_MAX) {
+        dropped_count++;
+        return;
+    }
+
+    buffer[buffer_count].seq = seq;
+    buffer[buffer_count].mono_us = esp_timer_get_time();
+    buffer[buffer_count].temperature = temperature;
+    buffer[buffer_count].humidity = humidity;
+    buffer_count++;
+}
+
+static int build_payload(size_t count)
+{
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    int64_t wall_now_ms = (int64_t) tv.tv_sec * 1000 + tv.tv_usec / 1000;
+    int64_t mono_now_us = esp_timer_get_time();
+
+    int written = snprintf(payload, sizeof(payload),
+                           "{\"device_id\":\"%s\",\"boot_id\":%lu,\"samples\":[",
+                           CONFIG_DEVICE_ID, (unsigned long) boot_id);
+    if (written < 0 || (size_t) written >= sizeof(payload)) {
+        return -1;
+    }
+    size_t n = (size_t) written;
+
+    for (size_t i = 0; i < count; i++) {
+        int64_t device_ts = wall_now_ms - (mono_now_us - buffer[i].mono_us) / 1000;
+
+        written = snprintf(payload + n, sizeof(payload) - n,
+                           "%s{\"seq\":%lu,\"device_ts\":%lld,"
+                           "\"temperature\":%.2f,\"humidity\":%.2f}",
+                           i == 0 ? "" : ",",
+                           (unsigned long) buffer[i].seq, device_ts,
+                           buffer[i].temperature, buffer[i].humidity);
+        if (written < 0 || (size_t) written >= sizeof(payload) - n) {
+            return -1;
+        }
+        n += (size_t) written;
+    }
+
+    written = snprintf(payload + n, sizeof(payload) - n, "]}");
+    if (written < 0 || (size_t) written >= sizeof(payload) - n) {
+        return -1;
+    }
+    return (int) (n + (size_t) written);
+}
+
+static void buffer_flush(esp_mqtt_client_handle_t client, const char *topic)
+{
+    if (buffer_count == 0) {
+        return;
+    }
+
+    size_t count = buffer_count < CONFIG_BATCH_MAX ? buffer_count : CONFIG_BATCH_MAX;
+
+    int len = build_payload(count);
+    if (len < 0) {
+        ESP_LOGE(TAG, "batch of %u samples does not fit", (unsigned) count);
+        return;
+    }
+
+    int msg_id = esp_mqtt_client_publish(client, topic, payload, len, 1, 0);
+    if (msg_id < 0) {
+        ESP_LOGW(TAG, "publish rejected: %d", msg_id);
+        return;
+    }
+
+    buffer_count -= count;
+    memmove(buffer, buffer + count, buffer_count * sizeof(sample_t));
 }
 
 
@@ -234,30 +355,35 @@ int64_t device_ts = (int64_t) tv.tv_sec * 1000 + tv.tv_usec / 1000;
 
 ESP_LOGI(TAG, "device_ts: %lld", device_ts);
 
-char payload[256];
-float temperature = 0.0f;
-float humidity = 0.0f;
-esp_err_t sensor_err = aht20_read(sensor, &temperature, &humidity);
-if (sensor_err != ESP_OK) {
-    ESP_LOGE(TAG, "sensor read failed: %s", esp_err_to_name(sensor_err));
-    return;
+boot_id = next_boot_id();
+ESP_LOGI(TAG, "boot_id %lu", (unsigned long) boot_id);
+
+uint32_t seq = 0;
+TickType_t last_wake = xTaskGetTickCount();
+
+for (;;) {
+    float temperature = 0.0f;
+    float humidity = 0.0f;
+
+    if (aht20_read(sensor, &temperature, &humidity) == ESP_OK) {
+        buffer_append(seq, temperature, humidity);
+        seq++;
+    } else {
+        ESP_LOGW(TAG, "sensor read failed");
+    }
+
+    if (xEventGroupGetBits(wifi_events) & MQTT_CONNECTED_BIT) {
+        buffer_flush(client, topic);
+    }
+
+    if (seq % 15 == 0) {
+        ESP_LOGI(TAG, "buffer %u/%d, dropped %lu",
+                 (unsigned) buffer_count, CONFIG_BUFFER_MAX,
+                 (unsigned long) dropped_count);
+    }
+
+    xTaskDelayUntil(&last_wake, pdMS_TO_TICKS(CONFIG_SAMPLE_INTERVAL_MS));
 }
-ESP_LOGI(TAG, "sensor: %.2f C, %.2f %%RH", temperature, humidity);
-
-int n = snprintf(payload, sizeof(payload),
-    "{\"device_id\":\"%s\",\"boot_id\":0,"
-    "\"samples\":[{\"seq\":0,\"device_ts\":%lld,\"temperature\":%.2f,\"humidity\":%.2f}]}",
-    CONFIG_DEVICE_ID, device_ts, temperature, humidity);
-
-if (n < 0 || n >= (int) sizeof(payload)) {
-    ESP_LOGE(TAG, "payload does not fit, needed %d bytes", n);
-    return;
-}
-
-int msg_id = esp_mqtt_client_publish(client, topic, payload, n, 1, 0);
-ESP_LOGI(TAG, "published msg_id %d, %d bytes", msg_id, n);
-
-
 
 esp_chip_info_t info;
 esp_chip_info(&info);
