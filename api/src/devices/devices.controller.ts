@@ -11,6 +11,7 @@ import {
   Param,
   Query,
   Sse,
+  ForbiddenException,
 } from '@nestjs/common';
 import { DevicesService } from './devices.service.js';
 import { z } from 'zod';
@@ -38,6 +39,9 @@ export class DevicesController {
     @Param('id') id: string,
     @Req() request: { user: { sub: string } },
   ) {
+    if (request.user.sub === process.env.DEMO_USER_ID) {
+      throw new ForbiddenException('The demo account is read-only');
+    }
     const parse = deleteZodSchema.safeParse(id);
     if (!parse.success) {
       throw new BadRequestException(parse.error.issues);
@@ -53,6 +57,9 @@ export class DevicesController {
     @Body() body: unknown,
     @Req() request: { user: { sub: string } },
   ) {
+    if (request.user.sub === process.env.DEMO_USER_ID) {
+      throw new ForbiddenException('The demo account is read-only');
+    }
     const parse = devZodSchema.safeParse(body);
     if (!parse.success) {
       throw new BadRequestException(parse.error.issues);

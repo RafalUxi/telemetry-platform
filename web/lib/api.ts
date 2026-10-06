@@ -72,3 +72,38 @@ export const fetchSeries = async (id: string, from: string, to: string, points: 
   const body = await res.json().catch(() => null);
   return { ok: res.ok, status: res.status, body };
 };
+
+export const fetchCreateDevice = async (name: string) => {
+  if (tokenHandle === null) {
+    return { ok: false, status: 401, body: null };
+  }
+  const res = await fetch(`${API}/devices`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${tokenHandle.accessToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name }),
+  });
+  if (res.status === 401) {
+    resetTokens();
+    return { ok: false, status: 401, body: null };
+  }
+  const body = await res.json().catch(() => null);
+  return { ok: res.ok, status: res.status, body };
+};
+
+export const fetchDeleteDevice = async (id: string) => {
+  if (tokenHandle === null) {
+    return { ok: false, status: 401, body: null };
+  }
+  const res = await fetch(`${API}/devices/${id}`, {
+    method: 'DELETE',
+    headers: { authorization: `Bearer ${tokenHandle.accessToken}` },
+  });
+  if (res.status === 401) {
+    resetTokens();
+    return { ok: false, status: 401, body: null };
+  }
+  return { ok: res.ok, status: res.status, body: null };
+};

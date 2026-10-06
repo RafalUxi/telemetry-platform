@@ -3,7 +3,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { SiYoutube } from 'react-icons/si';
 import { FiGithub, FiLinkedin } from 'react-icons/fi';
-import { fetchDevices, fetchLogin, fetchRegister, fetchSeries } from '@/lib/api';
+import {
+  fetchDevices,
+  fetchLogin,
+  fetchRegister,
+  fetchSeries,
+  fetchCreateDevice,
+  fetchDeleteDevice,
+} from '@/lib/api';
 import Graph from '@/components/graphs';
 
 type uplotChart = {
@@ -39,6 +46,9 @@ export default function Panel() {
   const [reg_email, setReg_email] = useState<string>('');
   const [reg_pass, setReg_pass] = useState<string>('');
   const [alert, setAlert] = useState<string | null>(null);
+  const [guest, setGuest] = useState<boolean>(false);
+  const [newName, setNewName] = useState<string>('');
+  const [created, setCreated] = useState<{ deviceId: string; password: string } | null>();
   const [selectDevice, setSelectDevice] = useState<{
     id: string;
     devices: string;
@@ -99,6 +109,9 @@ export default function Panel() {
   useEffect(() => {
     stop.current = false;
     if (logged) {
+      // readDevices awaits the request before it touches state, so the update is
+      // not synchronous - the rule cannot see through the await.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       readDevices();
     }
     return () => {
@@ -116,6 +129,7 @@ export default function Panel() {
     const guestLogin = await fetchLogin({ email, password });
     if (guestLogin.status === 200) {
       setLogged(true);
+      setGuest(true);
     } else {
       showAlert('Login as a guest went wrong');
     }
@@ -132,6 +146,7 @@ export default function Panel() {
 
     if (userLogin.status === 200) {
       setLogged(true);
+      setGuest(false);
     } else if (userLogin.status === 401) {
       textAlert = 'wrong email or password';
       showAlert(textAlert);
@@ -163,6 +178,38 @@ export default function Panel() {
     }
 
     showAlert(textAlert);
+  };
+
+  const newDevice = async (name: string) => {
+    if (name.length === 0) return;
+
+    const dev = await fetchCreateDevice(name);
+
+    if (dev.ok) {
+      showAlert('Successful created new device');
+      setCreated({ deviceId: dev.body.deviceId, password: dev.body.password });
+      readDevices();
+    } else if (dev.status === 401) {
+      setLogged(false);
+      showAlert('Your session has expired - please log in again');
+    } else {
+      showAlert('Something went wrong with create new device');
+    }
+  };
+
+  const deleteDevice = async (id: string) => {
+    const dev = await fetchDeleteDevice(id);
+
+    if (dev.ok) {
+      showAlert('Successful deleted device');
+      setSelectDevice(null);
+      readDevices();
+    } else if (dev.status === 401) {
+      setLogged(false);
+      showAlert('Your session has expired - please log in again');
+    } else {
+      showAlert('Something went wrong with delete device');
+    }
   };
 
   if (!logged) {
@@ -396,33 +443,60 @@ export default function Panel() {
                   {devices.map((d, i) => {
                     if (selectDevice === null) {
                       return (
-                        <div
-                          key={i}
-                          className="hover:text-violet-600 cursor-pointer"
-                          onClick={() => setSelectDevice(d)}
-                        >
-                          {d.name}
+                        <div key={i} className="flex">
+                          <div
+                            onClick={() => setSelectDevice(d)}
+                            className="hover:text-violet-600 cursor-pointer "
+                          >
+                            {d.name}
+                          </div>
+                          {guest === false && (
+                            <div
+                              onClick={() => deleteDevice(d.id)}
+                              className="border hover:bg-zinc-600 absolute right-1/6 cursor-pointer rounded-full w-5 h-5 flex justify-center items-center"
+                            >
+                              x
+                            </div>
+                          )}
                         </div>
                       );
                     }
                     if (selectDevice.id === d.id) {
                       return (
-                        <div
-                          key={i}
-                          className="hover:text-violet-600 text-violet-400 cursor-pointer"
-                          onClick={() => setSelectDevice(d)}
-                        >
-                          {d.name}
+                        <div key={i} className="flex">
+                          <div
+                            onClick={() => setSelectDevice(d)}
+                            className="hover:text-violet-600 cursor-pointer text-violet-400"
+                          >
+                            {d.name}
+                          </div>
+                          {guest === false && (
+                            <div
+                              onClick={() => deleteDevice(d.id)}
+                              className="border hover:bg-zinc-600 absolute right-1/6 cursor-pointer rounded-full w-5 h-5 flex justify-center items-center"
+                            >
+                              x
+                            </div>
+                          )}
                         </div>
                       );
                     } else {
                       return (
-                        <div
-                          key={i}
-                          className="hover:text-violet-600 cursor-pointer"
-                          onClick={() => setSelectDevice(d)}
-                        >
-                          {d.name}
+                        <div key={i} className="flex">
+                          <div
+                            onClick={() => setSelectDevice(d)}
+                            className="hover:text-violet-600 cursor-pointer "
+                          >
+                            {d.name}
+                          </div>
+                          {guest === false && (
+                            <div
+                              onClick={() => deleteDevice(d.id)}
+                              className="border hover:bg-zinc-600 absolute right-1/6 cursor-pointer rounded-full w-5 h-5 flex justify-center items-center"
+                            >
+                              x
+                            </div>
+                          )}
                         </div>
                       );
                     }
@@ -435,6 +509,52 @@ export default function Panel() {
               )}
             </div>
           </div>
+          {guest === false && (
+            <div className="border border-zinc-600 bg-zinc-950 h-1/5 absolute w-1/7 rounded-3xl left-1/35">
+              <div className="flex flex-col items-center mt-4 space-y-4">
+                <h1 className="text-md font-bold">Add new device</h1>
+                <input
+                  className="px-2 py-1 outline-none border rounded-2xl bg-zinc-950"
+                  type="text"
+                  placeholder="device name"
+                  value={newName}
+                  maxLength={32}
+                  onChange={(e) => setNewName(e.target.value)}
+                />
+                <button
+                  onClick={() => {
+                    newDevice(newName);
+                    setNewName('');
+                  }}
+                  disabled={newName.length === 0}
+                  className="text-white px-4 disabled:bg-black enabled:hover:text-violet-600 rounded-2xl py-1 cursor-pointer border disabled:cursor-default"
+                >
+                  Add
+                </button>
+              </div>
+            </div>
+          )}
+          {created && (
+            <div className="absolute rounded-2xl border border-white flex  h-64 w-lg bg-zinc-900 z-50">
+              <div className="w-full h-full relative flex flex-col text-sm justify-center items-center text-white">
+                <div
+                  onClick={() => setCreated(null)}
+                  className="absolute top-1/25 right-1/50 cursor-pointer hover:bg-violet-900 border rounded-2xl h-6 w-6 flex justify-center"
+                >
+                  x
+                </div>
+                <div className=" font-bold">
+                  Connection instructions (data shown once, save for later)
+                </div>
+                <div>Device ID: {created.deviceId}</div>
+                <div>Username: {created.deviceId}</div>
+                <div>Client ID: {created.deviceId}</div>
+                <div>Password: {created.password}</div>
+                <div>Broker: {process.env.NEXT_PUBLIC_MQTT_URL}</div>
+                <div>Topic: devices/{created.deviceId}/telemetry</div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
