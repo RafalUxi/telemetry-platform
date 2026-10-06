@@ -41,6 +41,9 @@ jobs:
 
       - run: npm ci
       - run: npm run lint
+      # LayoutProps and the route types live in .next/types, which is generated.
+      # Without this step tsc fails on a clean checkout but passes locally.
+      - run: npx next typegen
       - run: npx tsc --noEmit -p tsconfig.json
 
   build-push:
