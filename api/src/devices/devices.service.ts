@@ -48,7 +48,9 @@ export class DevicesService implements OnModuleInit {
         id: schema.devices.id,
       })
       .from(schema.devices)
-      .where(eq(schema.devices.user_id, user_id));
+      .where(eq(schema.devices.user_id, user_id))
+      .orderBy(schema.devices.name);
+
     const output = data.map((d) => {
       return { name: d.name, devices: d.device_id, id: d.id };
     });
