@@ -28,6 +28,9 @@ const RANGE = [
   { time: '1 h', sec: 3600 },
   { time: '6 h', sec: 21600 },
   { time: '24 h', sec: 86400 },
+  { time: '7 d', sec: 604800 },
+  { time: '30 d', sec: 2592000 },
+  { time: '1 y', sec: 31536000 },
 ];
 
 const takeTime = (sec: number) => {
@@ -48,7 +51,11 @@ export default function Panel() {
   const [alert, setAlert] = useState<string | null>(null);
   const [guest, setGuest] = useState<boolean>(false);
   const [newName, setNewName] = useState<string>('');
-  const [created, setCreated] = useState<{ deviceId: string; password: string } | null>();
+  const [created, setCreated] = useState<{
+    deviceId: string;
+    password: string;
+    brokerUrl: string;
+  } | null>();
   const [selectDevice, setSelectDevice] = useState<{
     id: string;
     devices: string;
@@ -187,7 +194,11 @@ export default function Panel() {
 
     if (dev.ok) {
       showAlert('Successful created new device');
-      setCreated({ deviceId: dev.body.deviceId, password: dev.body.password });
+      setCreated({
+        deviceId: dev.body.deviceId,
+        password: dev.body.password,
+        brokerUrl: dev.body.brokerUrl,
+      });
       readDevices();
     } else if (dev.status === 401) {
       setLogged(false);
@@ -550,7 +561,7 @@ export default function Panel() {
                 <div>Username: {created.deviceId}</div>
                 <div>Client ID: {created.deviceId}</div>
                 <div>Password: {created.password}</div>
-                <div>Broker: {process.env.NEXT_PUBLIC_MQTT_URL}</div>
+                <div>Broker: {created.brokerUrl}</div>
                 <div>Topic: devices/{created.deviceId}/telemetry</div>
               </div>
             </div>

@@ -133,7 +133,11 @@ export class DevicesService implements OnModuleInit {
       throw new HttpException(error, 404);
     }
 
-    output = { ...output, password: password };
+    output = {
+      ...output,
+      password: password,
+      brokerUrl: process.env.PUBLIC_MQTT_URL ?? 'PUBLIC_MQTT_URL is not set',
+    };
 
     return output;
   }
